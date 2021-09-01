@@ -4,25 +4,28 @@ import math
 import click
 from urllib import request
 import gzip
-from pathlib import Path, PurePath
+from pathlib import Path
+from typing import List
 
 from .logger import LOGGER
 
-def get_json(filepath):
+
+def get_json(filepath: Path) -> dict:
+    """Opens a JSON file and loads it into memory as a dictionary."""
     with open(filepath) as f:
         obj = json.load(f)
 
     return obj
 
 
-def geojson_feature_to_poly(geojson):
-    """Assumes that the GeoJSON file has one feature only"""
+def geojson_feature_to_poly(geojson: dict) -> Polygon:
+    """Creates a shapely Polygon from the first feature in a GeoJSON-like dict."""
     if not len(geojson) == 1:
         LOGGER.warn(f"GeoJSON with more than one feature detected. Proceeding with the first one.")
     return Polygon(shape(geojson[0]["geometry"]))
 
 
-def create_grid_from_bounds(bounds):
+def create_grid_from_bounds(bounds: tuple) -> List[float]:
     """Creates regular grid of size 1x1 within specified bounds
     """
     grid_polys = []
@@ -34,7 +37,7 @@ def create_grid_from_bounds(bounds):
     return grid_polys
 
 
-def download_tile(southwest, directory):
+def download_tile(southwest: List[float], directory: Path) -> None:
     """Download tile whose filename matches the southwestern coordinate tuple."""
     x, y = southwest
     tile_name = '%s%02d%s%03d.hgt' % ('S' if y < 0 else 'N', abs(y), 'W' if x < 0 else 'E', abs(x))
@@ -56,7 +59,7 @@ def download_tile(southwest, directory):
 @click.command()
 @click.argument("config_file", type=click.Path())
 @click.argument("elevation_folder", type=click.Path())
-def main(config_file, elevation_folder):
+def main(config_file: Path, elevation_folder: Path) -> None:
     """Downloads all elevation tiles that intersect with GeoJSON geometries specified in the config file.
     The config file is expected as an osmium extract config file.
     """
