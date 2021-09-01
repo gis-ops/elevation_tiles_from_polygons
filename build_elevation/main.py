@@ -1,3 +1,5 @@
+import logging
+
 from shapely.geometry import shape, box, Polygon
 import json
 import math
@@ -47,7 +49,7 @@ def download_tile(southwest: List[int], directory: Path) -> None:
     Path.mkdir(dest_directory, exist_ok=True)
     filepath = Path(dest_directory, tile_name)
     if not filepath.is_file():
-        LOGGER.info(f"Downloading tile at {url}")
+        LOGGER.info(f"Downloading tile from {url}")
         with request.urlopen(url) as res:
             with gzip.GzipFile(fileobj=res, mode='rb') as gz:
                 with open(filepath, 'wb') as f:
@@ -57,19 +59,29 @@ def download_tile(southwest: List[int], directory: Path) -> None:
 
 
 @click.command()
-@click.argument("config_file", type=click.Path())
-@click.argument("elevation_folder", type=click.Path())
-def main(config_file: Path, elevation_folder: Path) -> None:
-    """Downloads all elevation tiles that intersect with GeoJSON geometries specified in the config file.
+@click.argument("input_geojson_dir", type=Path)
+@click.argument("output_dir", type=Path)
+@click.option("--verbose", "-v", type=bool, is_flag=True)
+def main(input_geojson_dir: Path, output_dir: Path, verbose=True) -> None:
+    """
+    Downloads all elevation tiles that intersect with GeoJSON geometries specified in the config file.
     The config file is expected as an osmium extract config file.
     """
-    config = get_json(config_file)
+    if not input_geojson_dir.is_dir():
+        LOGGER.critical(f"Directory {output_dir} does not contain any GeoJSON.")
+    output_dir.mkdir(exist_ok=True)
+    if verbose:
+        LOGGER.setLevel(logging.DEBUG)
+
     expected = 0
     total = 0
-    for extract in config["extracts"]:
-        geojson_file = extract["polygon"]["file_name"]
-        geojson = get_json(geojson_file)["features"]
-        poly = geojson_feature_to_poly(geojson)
+    for fp in input_geojson_dir.resolve().iterdir():
+        if not fp.suffix == '.geojson':
+            continue
+        LOGGER.debug(f"opening {fp.name}")
+
+        geojson = get_json(fp)
+        poly = geojson_feature_to_poly(geojson["features"])
         bounds = poly.bounds
         rounded_bounds = xmin, ymin, xmax, ymax = [math.floor(x) if i < 2 else math.ceil(x) for i, x in enumerate(bounds)]
         expected += (xmax-xmin)*(ymax-ymin)
@@ -77,7 +89,9 @@ def main(config_file: Path, elevation_folder: Path) -> None:
         for grid_poly in grid_polys:
             if poly.intersects(grid_poly):
                 sw = grid_poly.bounds[0:2]
-                download_tile(sw, elevation_folder)
+                download_tile(sw, output_dir)
                 total += 1
 
-    LOGGER.info(f"Intersection saved {expected - total} tiles!")
+    LOGGER.debug(f"Bbox extraction would've yielded {expected} tiles.")
+
+    LOGGER.info(f"Successfully saved {total} tiles to {output_dir}!")
