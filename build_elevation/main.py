@@ -2,11 +2,11 @@ from shapely.geometry import shape, box, Polygon
 import json
 import math
 import click
-import os
-import urllib.request
+from urllib import request
+import gzip
+from pathlib import Path, PurePath
 
 from .logger import LOGGER
-
 
 def get_json(filepath):
     with open(filepath) as f:
@@ -40,15 +40,25 @@ def download_tile(southwest, directory):
     tile_name = '%s%02d%s%03d.hgt' % ('S' if y < 0 else 'N', abs(y), 'W' if x < 0 else 'E', abs(x))
     dir_name = '%s%02d' % ('S' if y < 0 else 'N', abs(y))
     url = f"http://s3.amazonaws.com/elevation-tiles-prod/skadi/{dir_name}/{tile_name}.gz"
-    LOGGER.info(f"Downloading tile at {url}")
-    #urllib.request.urlretrieve()
+    dest_directory = Path(directory, dir_name)
+    Path.mkdir(dest_directory, exist_ok=True)
+    filepath = Path(dest_directory, tile_name)
+    if not filepath.is_file():
+        LOGGER.info(f"Downloading tile at {url}")
+        with request.urlopen(url) as res:
+            with gzip.GzipFile(fileobj=res, mode='rb') as gz:
+                with open(filepath, 'wb') as f:
+                    f.write(gz.read())
+    else:
+        LOGGER.info(f"Already downloaded tile {url}")
 
 
 @click.command()
 @click.argument("config_file", type=click.Path())
 @click.argument("elevation_folder", type=click.Path())
 def main(config_file, elevation_folder):
-    """
+    """Downloads all elevation tiles that intersect with GeoJSON geometries specified in the config file.
+    The config file is expected as an osmium extract config file.
     """
     config = get_json(config_file)
     expected = 0
@@ -59,7 +69,7 @@ def main(config_file, elevation_folder):
         poly = geojson_feature_to_poly(geojson)
         bounds = poly.bounds
         rounded_bounds = xmin, ymin, xmax, ymax = [math.floor(x) if i < 2 else math.ceil(x) for i, x in enumerate(bounds)]
-        expected += (xmax-xmin+1)*(ymax-ymin+1)
+        expected += (xmax-xmin)*(ymax-ymin)
         grid_polys = create_grid_from_bounds(rounded_bounds)
         for grid_poly in grid_polys:
             if poly.intersects(grid_poly):
@@ -67,4 +77,4 @@ def main(config_file, elevation_folder):
                 download_tile(sw, elevation_folder)
                 total += 1
 
-        LOGGER.info(f"Expected {expected} tiles, downloaded {total}.")
+    LOGGER.info(f"Intersection saved {expected - total} tiles!")
