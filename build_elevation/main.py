@@ -5,7 +5,7 @@ import click
 from urllib import request
 import gzip
 from pathlib import Path
-from typing import List
+from typing import List, Union
 
 from .logger import LOGGER
 
@@ -25,7 +25,7 @@ def geojson_feature_to_poly(geojson: dict) -> Polygon:
     return Polygon(shape(geojson[0]["geometry"]))
 
 
-def create_grid_from_bounds(bounds: tuple) -> List[float]:
+def create_grid_from_bounds(bounds: List[Union[int]]) -> List[Polygon]:
     """Creates regular grid of size 1x1 within specified bounds
     """
     grid_polys = []
@@ -37,7 +37,7 @@ def create_grid_from_bounds(bounds: tuple) -> List[float]:
     return grid_polys
 
 
-def download_tile(southwest: List[float], directory: Path) -> None:
+def download_tile(southwest: List[int], directory: Path) -> None:
     """Download tile whose filename matches the southwestern coordinate tuple."""
     x, y = southwest
     tile_name = '%s%02d%s%03d.hgt' % ('S' if y < 0 else 'N', abs(y), 'W' if x < 0 else 'E', abs(x))
